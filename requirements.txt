@@ -1,0 +1,2 @@
+pyserial>=3.5
+pymeasure>=0.13
