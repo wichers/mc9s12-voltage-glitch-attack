@@ -153,13 +153,26 @@ def dump_firmware(bdm, teensy, delay_ns, width_ns, output_prefix="firmware"):
         # Set PPAGE register for banked flash pages
         if ppage is not None:
             try:
+                # Read first word of paged window BEFORE switching
+                pre_data = bdm.read_memory(0x8000, 2)
+                pre_val = (pre_data[0] << 8) | pre_data[1]
+
                 bdm.write_memory(PPAGE_REG, bytes([ppage]))
-                # Read back to verify
+
+                # Read back PPAGE register to verify write
                 readback = bdm.read_memory(PPAGE_REG, 1)
                 if readback[0] != ppage:
-                    print(f"    WARNING: PPAGE readback 0x{readback[0]:02X} != 0x{ppage:02X}")
+                    print(f"    WARNING: PPAGE readback 0x{readback[0]:02X} != expected 0x{ppage:02X}")
                 else:
-                    print(f"    PPAGE set to 0x{ppage:02X} (verified)")
+                    print(f"    PPAGE register = 0x{ppage:02X} (verified)")
+
+                # Read first word AFTER switching to confirm data changed
+                post_data = bdm.read_memory(0x8000, 2)
+                post_val = (post_data[0] << 8) | post_data[1]
+                if pre_val == post_val:
+                    print(f"    WARNING: 0x8000 unchanged after PPAGE switch (0x{post_val:04X}) — page may not have switched!")
+                else:
+                    print(f"    0x8000: 0x{pre_val:04X} -> 0x{post_val:04X} (page switched OK)")
             except Exception as e:
                 print(f"    FAILED to set PPAGE: {e}")
                 continue
