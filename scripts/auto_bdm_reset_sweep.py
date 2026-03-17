@@ -154,18 +154,25 @@ def dump_firmware(bdm, teensy, delay_ns, width_ns, output_prefix="firmware"):
         if ppage is not None:
             try:
                 bdm.write_memory(PPAGE_REG, bytes([ppage]))
-                print(f"    PPAGE set to 0x{ppage:02X}")
+                # Read back to verify
+                readback = bdm.read_memory(PPAGE_REG, 1)
+                if readback[0] != ppage:
+                    print(f"    WARNING: PPAGE readback 0x{readback[0]:02X} != 0x{ppage:02X}")
+                else:
+                    print(f"    PPAGE set to 0x{ppage:02X} (verified)")
             except Exception as e:
                 print(f"    FAILED to set PPAGE: {e}")
                 continue
 
-        # For paged regions, store at the linear address
-        # Page 0x3C -> 0x08000-0x0BFFF, Page 0x3D -> 0x0C000-0x0FFFF (linear)
-        # But for S19, use paged linear: page*0x4000 for unique addressing
-        if ppage == 0x3C:
-            addr_offset = 0x08000 - 0x8000  # store at 0x08000
-        elif ppage == 0x3D:
-            addr_offset = 0x0C000 - 0x8000  # store at 0x0C000
+        # Store paged regions at HCS12 physical (linear) addresses to avoid
+        # S19 address collisions. Page 0x3D at linear 0x0C000 would collide
+        # with page 0x3F at CPU 0xC000, so use full physical addresses:
+        #   Page 0x3C = 0x3C * 0x4000 = 0xF0000
+        #   Page 0x3D = 0x3D * 0x4000 = 0xF4000
+        # Fixed pages stay at their CPU addresses (0x4000, 0xC000).
+        # This requires S2 records (24-bit) for paged regions.
+        if ppage is not None:
+            addr_offset = ppage * 0x4000 - 0x8000  # physical = page * 16K
         else:
             addr_offset = 0
 
