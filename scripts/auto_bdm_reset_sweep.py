@@ -177,15 +177,14 @@ def dump_firmware(bdm, teensy, delay_ns, width_ns, output_prefix="firmware"):
                 print(f"    FAILED to set PPAGE: {e}")
                 continue
 
-        # Store paged regions at HCS12 physical (linear) addresses to avoid
-        # S19 address collisions. Page 0x3D at linear 0x0C000 would collide
-        # with page 0x3F at CPU 0xC000, so use full physical addresses:
-        #   Page 0x3C = 0x3C * 0x4000 = 0xF0000
-        #   Page 0x3D = 0x3D * 0x4000 = 0xF4000
+        # Store paged regions using USBDM/Freescale convention:
+        # page number in high byte, CPU address in low 16 bits.
+        #   Page 0x3C window 0x8000-0xBFFF -> 0x3C8000-0x3CBFFF
+        #   Page 0x3D window 0x8000-0xBFFF -> 0x3D8000-0x3DBFFF
         # Fixed pages stay at their CPU addresses (0x4000, 0xC000).
-        # This requires S2 records (24-bit) for paged regions.
+        # Paged regions require S2 records (24-bit addresses).
         if ppage is not None:
-            addr_offset = ppage * 0x4000 - 0x8000  # physical = page * 16K
+            addr_offset = (ppage << 16) - 0x8000 + 0x8000  # = ppage << 16
         else:
             addr_offset = 0
 
