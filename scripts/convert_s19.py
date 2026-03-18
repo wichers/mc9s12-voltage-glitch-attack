@@ -131,34 +131,30 @@ def s_record(addr, data):
     return full + f"{checksum:02X}"
 
 
-def write_s19(filename, records, fmt):
+def write_s19(filename, records, fmt, chunk_size=16, exclude_eeprom=False):
     """Write records to S19 file in the specified format."""
     # Sort by address
     records.sort(key=lambda r: r[0])
 
     with open(filename, 'w') as f:
-        # S0 header
-        f.write("S0030000FC\n")
-
         total_bytes = 0
         for addr, data in records:
             region, page = classify_record(addr)
+
+            # Skip EEPROM if requested
+            if exclude_eeprom and region == 'eeprom':
+                continue
+
             cpu_addr = to_cpu_addr(addr, region, page)
             new_addr = convert_addr(cpu_addr, page, fmt)
 
-            # Write in chunks of 32 bytes
+            # Write in chunks (default 16 bytes to match USBDM format)
             offset = 0
             while offset < len(data):
-                chunk = data[offset:offset + 32]
+                chunk = data[offset:offset + chunk_size]
                 f.write(s_record(new_addr + offset, chunk) + "\n")
                 total_bytes += len(chunk)
                 offset += len(chunk)
-
-        # End record
-        if any(r[0] > 0xFFFF for r in records) and fmt != 'flat':
-            f.write("S804000000FB\n")  # S8 for 24-bit
-        else:
-            f.write("S9030000FC\n")  # S9 for 16-bit
 
     return total_bytes
 
@@ -173,6 +169,10 @@ def main():
                         help='Output address format (default: usbdm)')
     parser.add_argument('--info', action='store_true',
                         help='Show info about input file and exit')
+    parser.add_argument('--no-eeprom', action='store_true',
+                        help='Exclude EEPROM data from output')
+    parser.add_argument('--chunk-size', type=int, default=16,
+                        help='Bytes per S-record (default: 16, USBDM compatible)')
     args = parser.parse_args()
 
     records = parse_s19(args.input)
@@ -195,7 +195,9 @@ def main():
             print(f"  {key}: 0x{info['min']:06X}-0x{info['max']:06X} ({info['bytes']} bytes)")
         return
 
-    total = write_s19(args.output, records, args.format)
+    total = write_s19(args.output, records, args.format,
+                      chunk_size=args.chunk_size,
+                      exclude_eeprom=args.no_eeprom)
     print(f"Converted {len(records)} records ({total} bytes) to {args.format} format")
     print(f"Output: {args.output}")
 
